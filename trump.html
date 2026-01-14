@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Trump News Full Feed with Snippets</title>
+<style>
+    body {
+        background: #0f0f0f;
+        color: #eee;
+        font-family: Arial, sans-serif;
+        padding: 20px;
+    }
+    h1 { color: #ff4d4d; }
+    button {
+        padding: 8px 14px;
+        margin-bottom: 10px;
+        cursor: pointer;
+    }
+    .article {
+        border-bottom: 1px solid #333;
+        padding: 12px 0;
+    }
+    .new { background: #1a1a1a; }
+    a { color: #4da6ff; }
+    .snippet { color: #ccc; margin-top: 5px; font-size: 0.95em; }
+    #status { color: #aaa; margin-bottom: 10px; }
+</style>
+</head>
+<body>
+
+<h1>📰 Trump News Full Feed</h1>
+<button onclick="checkNews()">Check Now</button>
+<div id="status">Idle</div>
+<div id="results"></div>
+
+<script>
+// ======================
+// SETTINGS
+// ======================
+const CHECK_INTERVAL_MS = 30000;
+
+const FEEDS = [
+    "https://feeds.bbci.co.uk/news/rss.xml",
+    "http://rss.cnn.com/rss/edition.rss",
+    "https://feeds.reuters.com/reuters/topNews"
+];
+
+const KEYWORDS = ["donald trump", "trump"];
+const STORAGE_KEY = "seenTrumpArticles";
+
+// ======================
+// NOTIFICATIONS
+// ======================
+if ("Notification" in window && Notification.permission !== "granted") {
+    Notification.requestPermission();
+}
+
+function notify(title) {
+    if (Notification.permission === "granted") {
+        new Notification("New Trump Article", { body: title });
+    }
+}
+
+// ======================
+// STORAGE
+// ======================
+function loadSeen() {
+    return new Set(JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]"));
+}
+
+function saveSeen(seen) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...seen]));
+}
+
+// ======================
+// FETCH RSS
+// ======================
+async function fetchFeed(url) {
+    const proxy = "https://api.allorigins.win/raw?url=";
+    const res = await fetch(proxy + encodeURIComponent(url));
+    const text = await res.text();
+    return new DOMParser().parseFromString(text, "text/xml");
+}
+
+function matches(text) {
+    text = text.toLowerCase();
+    return KEYWORDS.some(k => text.includes(k));
+}
+
+// ======================
+// MAIN CHECK
+// ======================
+async function checkNews() {
+    const results = document.getElementById("results");
+    const status = document.getElementById("status");
+    const seen = loadSeen();
+    let newCount = 0;
+
+    status.textContent = "Checking for articles...";
+
+    // Clear results to re-add all
+    results.innerHTML = "";
+
+    for (const feedUrl of FEEDS) {
+        try {
+            const xml = await fetchFeed(feedUrl);
+            const items = xml.querySelectorAll("item");
+
+            for (const item of items) {
+                const title = item.querySelector("title")?.textContent || "";
+                const link = item.querySelector("link")?.textContent || "";
+                const desc = item.querySelector("description")?.textContent || "";
+                const id = link || title;
+
+                if (!matches(title + desc)) continue;
+
+                // Mark new articles
+                const isNew = !seen.has(id);
+                if (isNew) {
+                    newCount++;
+                    notify(title);
+                    seen.add(id);
+                }
+
+                const div = document.createElement("div");
+                div.className = "article" + (isNew ? " new" : "");
+                div.innerHTML = `
+                    <strong>${title}</strong><br>
+                    <a href="${link}" target="_blank">Read article</a>
+                    <div class="snippet">${desc}</div>
+                `;
+
+                results.appendChild(div);
+            }
+
+            saveSeen(seen);
+        } catch (e) {
+            console.error("Feed error:", feedUrl, e);
+        }
+    }
+
+    const time = new Date().toLocaleTimeString();
+    status.textContent = `Checked at ${time}. ${newCount} new article(s)`;
+}
+
+// ======================
+// AUTO START
+// ======================
+checkNews();
+setInterval(checkNews, CHECK_INTERVAL_MS);
+</script>
+
+</body>
+</html>
